@@ -1,8 +1,10 @@
 package com.example.followthesun;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -34,14 +36,26 @@ import com.example.followthesun.util.SystemUiHider;
  * @see SystemUiHider
  */
 public class CaptureActivity extends Activity implements SensorEventListener {
+	private static String TAG = "FollowTheSunActivity";
 	private Camera mCamera;
 	private CameraPreview mCameraPreview;
 
 	private SensorManager mSensorManager;
 	private Sensor mOrientation;
 	private float mRoll, mPitch, mYaw;
-	private boolean mHasSensorData;
-	private TextView mAnglesText;
+	private TextView mAnglesText, mNumCapturedText;
+	private boolean mIsSaving, mIsPreviewing;
+	private float mLastCaptureYaw;
+	private int mNumCaptured;
+	private File mAppStorageDir, mCurrentStorageDir;
+	private File mOrientationsFile;
+	private BufferedWriter mOrientationWriter;
+
+	private static float ROLL_THRESH = 5;
+	private static float PITCH_THRESH = 5;
+	private static float NEW_IMAGE_YAW_THRESH = 3;
+	private static float IDEAL_ROLL = 0;
+	private static float IDEAL_PITCH = -90;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -54,22 +68,52 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 		FrameLayout preview = (FrameLayout) findViewById(R.id.camera_preview);
 		preview.addView(mCameraPreview);
 
-		Button captureButton = (Button) findViewById(R.id.button_capture);
+		final Button captureButton = (Button) findViewById(R.id.button_capture);
 		captureButton.setOnClickListener(new View.OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				mCamera.takePicture(null, null, mPicture);
+				if (mIsSaving) {
+					mIsSaving = false;
+					try {
+						mOrientationWriter.flush();
+						mOrientationWriter.close();
+					} catch(IOException e) {
+						Log.e(TAG, "Could not close orientation writer");
+					}
+					captureButton.setText("Capture");
+				} else {
+					createCaptureFiles();
+					mNumCaptured = 0;
+					mIsSaving = true;
+					captureButton.setText("Stop");
+				}
 			}
-		});  
+		});
 
 		mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
 		mOrientation = mSensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION);
 
+		mIsPreviewing = true;
 		mRoll = 0;
 		mPitch = 0;
 		mYaw = 0;
-		mHasSensorData = false;
+		mNumCaptured = 0;
 		mAnglesText = (TextView)findViewById(R.id.angles_text);
+		mNumCapturedText = (TextView)findViewById(R.id.num_captured_text);
+		mLastCaptureYaw = 0;
+
+		// We can run this once because we're fixing the phone in portrait
+		determineDisplayOrientation();
+
+		mAppStorageDir = new File(
+				Environment
+				.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+				"FollowTheSun");
+		if (!mAppStorageDir.exists()) {
+			if (!mAppStorageDir.mkdirs()) {
+				Log.e("FollowTheSun", "failed to create directory");
+			}
+		}
 	}
 
 	/**
@@ -95,10 +139,13 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 			if (pictureFile == null) {
 				return;
 			}
+			Log.d(TAG, "Saving to " + pictureFile);
 			try {
 				FileOutputStream fos = new FileOutputStream(pictureFile);
 				fos.write(data);
 				fos.close();
+				mCameraPreview.start();
+				mIsPreviewing = true;
 			} catch (FileNotFoundException e) {
 
 			} catch (IOException e) {
@@ -106,59 +153,118 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 		}
 	};
 
-	private static File getOutputMediaFile() {
-		File mediaStorageDir = new File(
-				Environment
-				.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-				"MyCameraApp");
-		if (!mediaStorageDir.exists()) {
-			if (!mediaStorageDir.mkdirs()) {
-				Log.d("MyCameraApp", "failed to create directory");
-				return null;
-			}
-		}
+	private File getOutputMediaFile() {
 		// Create a media file name
-		String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss")
+		String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss")
 		.format(new Date());
 		File mediaFile;
-		mediaFile = new File(mediaStorageDir.getPath() + File.separator
-				+ "IMG_" + timeStamp + ".jpg");
+		mediaFile = new File(mCurrentStorageDir.getPath() + File.separator
+				+ "IMG_" + timestamp + ".jpg");
 
 		return mediaFile;
 	}
 
+	private void createCaptureFiles() {
+		String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss")
+		.format(new Date());
+		mCurrentStorageDir = new File(mAppStorageDir, timestamp);
+		if (!mCurrentStorageDir.exists()) {
+			if (!mCurrentStorageDir.mkdirs()) {
+				Log.e(TAG, "failed to create directory");
+			}
+		}
+
+		mOrientationsFile = new File(mCurrentStorageDir, "orientation.csv");
+		if (!mOrientationsFile.exists()) {
+			try {
+				mOrientationsFile.createNewFile();
+				mOrientationWriter = new BufferedWriter(new FileWriter(mOrientationsFile));
+				mOrientationWriter.append("yaw,pitch,roll\n");
+			} catch(IOException ioe) {
+				Log.e(TAG, "Could not create " + mOrientationsFile);
+			}
+		} else {
+			Log.e(TAG, "mOrientations file, " + mOrientationsFile + ", already exists!");
+		}
+	}
+
 	@Override
 	public void onAccuracyChanged(Sensor sensor, int accuracy) {
-		// Do something here if sensor accuracy changes.
-		// You must implement this callback in your code.
+		mIsSaving = false;
+		Log.e(TAG, "Accuracy changed to " + accuracy);
 	}
 
 	@Override
 	protected void onResume() {
 		super.onResume();
 		mSensorManager.registerListener(this, mOrientation, SensorManager.SENSOR_DELAY_NORMAL);
+		try {
+			mCamera.reconnect();
+		} catch (IOException e) {
+			Log.e(TAG, "Could not reconnect to camera");
+		}
+		mCameraPreview.start();
 	}
 
 	@Override
 	protected void onPause() {
 		super.onPause();
 		mSensorManager.unregisterListener(this);
+		mIsSaving = false;
+		mCameraPreview.stop();
+		mCamera.release();
+		finish(); // Just die
 	}
 
 	@Override
 	public void onSensorChanged(SensorEvent event) {
-		mHasSensorData = true;
 		mYaw = event.values[0];
 		mPitch = event.values[1];
 		mRoll = event.values[2];
 
 		mAnglesText.setText("(" + String.format("%.2f", mYaw) + ", " + 
 				String.format("%.2f", mPitch) + ", " + 
-				String.format("%.2f", mYaw) + ")");
-		determineDisplayOrientation();
+				String.format("%.2f", mRoll) + ")");
+
+		if (canSave()) {
+			try {
+				Log.d(TAG, "Starting to take picture");
+				mIsPreviewing = false;
+				mCamera.takePicture(null, null, mPicture);
+				saveOrientations();
+				Log.d(TAG, "Finished taking picture");
+			} catch (Exception e) {
+				Log.e(TAG, e.getMessage());
+				mIsPreviewing = true;
+			}
+			mLastCaptureYaw = mYaw;
+			mNumCaptured += 1;
+			mNumCapturedText.setText("Captured: " + mNumCaptured);
+		}
 	}
 
-	public void determineDisplayOrientation() {
+	private boolean canSave() {
+		return (mIsSaving && 
+				mIsPreviewing &&
+				Math.abs(angleDiff(mPitch, IDEAL_PITCH)) < PITCH_THRESH &&
+				Math.abs(angleDiff(mRoll, IDEAL_ROLL)) < ROLL_THRESH &&
+				Math.abs(angleDiff(mYaw, mLastCaptureYaw)) >= NEW_IMAGE_YAW_THRESH);
+	}
+
+	private static float angleDiff(float a, float b) {
+		return (a - b) % 360;
+	}
+
+	private void saveOrientations() throws IOException {
+		mOrientationWriter.append(Float.toString(mYaw));
+		mOrientationWriter.append(",");
+		mOrientationWriter.append(Float.toString(mPitch));
+		mOrientationWriter.append(",");
+		mOrientationWriter.append(Float.toString(mRoll));
+		mOrientationWriter.append("\n");
+	}
+
+	private void determineDisplayOrientation() {
 		CameraInfo cameraInfo = new CameraInfo();
 		Camera.getCameraInfo(0, cameraInfo);
 
@@ -191,7 +297,6 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 		} else {
 			displayOrientation = (cameraInfo.orientation - degrees + 360) % 360;
 		}
-
 		mCamera.setDisplayOrientation(displayOrientation);
 	}
 }
