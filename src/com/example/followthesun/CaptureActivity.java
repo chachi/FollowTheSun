@@ -50,6 +50,7 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 	private File mAppStorageDir, mCurrentStorageDir;
 	private File mOrientationsFile;
 	private BufferedWriter mOrientationWriter;
+	private String mTimestamp;
 
 	private static float ROLL_THRESH = 5;
 	private static float PITCH_THRESH = 5;
@@ -101,6 +102,7 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 		mAnglesText = (TextView)findViewById(R.id.angles_text);
 		mNumCapturedText = (TextView)findViewById(R.id.num_captured_text);
 		mLastCaptureYaw = 0;
+		mTimestamp = "";
 
 		// We can run this once because we're fixing the phone in portrait
 		determineDisplayOrientation();
@@ -155,19 +157,15 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 
 	private File getOutputMediaFile() {
 		// Create a media file name
-		String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss")
-		.format(new Date());
 		File mediaFile;
 		mediaFile = new File(mCurrentStorageDir.getPath() + File.separator
-				+ "IMG_" + timestamp + ".jpg");
+				+ "IMG_" + mTimestamp + ".jpg");
 
 		return mediaFile;
 	}
 
 	private void createCaptureFiles() {
-		String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss")
-		.format(new Date());
-		mCurrentStorageDir = new File(mAppStorageDir, timestamp);
+		mCurrentStorageDir = new File(mAppStorageDir, mTimestamp);
 		if (!mCurrentStorageDir.exists()) {
 			if (!mCurrentStorageDir.mkdirs()) {
 				Log.e(TAG, "failed to create directory");
@@ -179,7 +177,7 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 			try {
 				mOrientationsFile.createNewFile();
 				mOrientationWriter = new BufferedWriter(new FileWriter(mOrientationsFile));
-				mOrientationWriter.append("yaw,pitch,roll\n");
+				mOrientationWriter.append("timestamp,yaw,pitch,roll\n");
 			} catch(IOException ioe) {
 				Log.e(TAG, "Could not create " + mOrientationsFile);
 			}
@@ -230,6 +228,8 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 			try {
 				Log.d(TAG, "Starting to take picture");
 				mIsPreviewing = false;
+				mTimestamp = new SimpleDateFormat("yyyyMMdd_HHmmss")
+				.format(new Date());
 				mCamera.takePicture(null, null, mPicture);
 				saveOrientations();
 				Log.d(TAG, "Finished taking picture");
@@ -256,6 +256,8 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 	}
 
 	private void saveOrientations() throws IOException {
+		mOrientationWriter.append(mTimestamp);
+		mOrientationWriter.append(",");
 		mOrientationWriter.append(Float.toString(mYaw));
 		mOrientationWriter.append(",");
 		mOrientationWriter.append(Float.toString(mPitch));
