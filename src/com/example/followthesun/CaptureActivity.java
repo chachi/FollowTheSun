@@ -200,6 +200,12 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 			}
 		} else {
 			Log.e(TAG, "mOrientations file, " + mOrientationsFile + ", already exists!");
+			try{
+				mOrientationWriter = new BufferedWriter(new FileWriter(mOrientationsFile));
+				mOrientationWriter.append("timestamp,yaw,pitch,roll\n");
+			} catch(IOException ioe) {
+				Log.e(TAG, "Could not create " + mOrientationsFile);
+			}
 		}
 	}
 
@@ -245,13 +251,14 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 			try {
 				Log.d(TAG, "Starting to take picture");
 				mIsPreviewing = false;
-				mTimestamp = new SimpleDateFormat("yyyyMMdd_HHmmss")
+				mTimestamp = new SimpleDateFormat("yyyy.MM.dd_HH:mm:ss")
 				.format(new Date());
 				mCamera.takePicture(null, null, mPicture);
 				saveOrientations();
 				Log.d(TAG, "Finished taking picture");
 			} catch (Exception e) {
-				Log.e(TAG, e.getMessage());
+				Log.e(TAG, "Couldn't take the picture...");
+//				e.getMessage()
 				mIsPreviewing = true;
 			}
 			mLastCaptureYaw = mYaw;
