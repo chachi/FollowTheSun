@@ -82,6 +82,7 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 					}
 					captureButton.setText("Capture");
 				} else {
+					updateTimestamp();
 					createCaptureFiles();
 					mNumCaptured = 0;
 					mIsSaving = true;
@@ -181,6 +182,10 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 		return mediaFile;
 	}
 
+	private void updateTimestamp() {
+		mTimestamp = new SimpleDateFormat("yyyy.MM.dd_HH:mm:ss").format(new Date());
+	}
+	
 	private void createCaptureFiles() {
 		mCurrentStorageDir = new File(mAppStorageDir, mTimestamp);
 		if (!mCurrentStorageDir.exists()) {
@@ -251,14 +256,12 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 			try {
 				Log.d(TAG, "Starting to take picture");
 				mIsPreviewing = false;
-				mTimestamp = new SimpleDateFormat("yyyy.MM.dd_HH:mm:ss")
-				.format(new Date());
+				updateTimestamp();
 				mCamera.takePicture(null, null, mPicture);
 				saveOrientations();
 				Log.d(TAG, "Finished taking picture");
 			} catch (Exception e) {
 				Log.e(TAG, "Couldn't take the picture...");
-//				e.getMessage()
 				mIsPreviewing = true;
 			}
 			mLastCaptureYaw = mYaw;
