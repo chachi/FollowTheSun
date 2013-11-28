@@ -63,7 +63,6 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 		super.onCreate(savedInstanceState);
 
 		setContentView(R.layout.activity_capture);
-
 		mCamera = getCameraInstance();
 		mCameraPreview = new CameraPreview(this, mCamera);
 		FrameLayout preview = (FrameLayout) findViewById(R.id.camera_preview);
@@ -107,13 +106,31 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 		// We can run this once because we're fixing the phone in portrait
 		determineDisplayOrientation();
 
+		//Check if we even have external media to write to.
+		boolean mExternalStorageAvailable = false;
+		boolean mExternalStorageWriteable = false;
+		String state = Environment.getExternalStorageState();
+		if (Environment.MEDIA_MOUNTED.equals(state)) {
+		    // We can read and write the media
+		    mExternalStorageAvailable = mExternalStorageWriteable = true;
+		} else if (Environment.MEDIA_MOUNTED_READ_ONLY.equals(state)) {
+		    // We can only read the media
+		    mExternalStorageAvailable = true;
+		    mExternalStorageWriteable = false;
+		} else {
+		    // Something else is wrong. It may be one of many other states, but all we need
+		    //  to know is we can neither read nor write
+		    mExternalStorageAvailable = mExternalStorageWriteable = false;
+		}
+		
+		
 		mAppStorageDir = new File(
 				Environment
 				.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
 				"FollowTheSun");
 		if (!mAppStorageDir.exists()) {
 			if (!mAppStorageDir.mkdirs()) {
-				Log.e("FollowTheSun", "failed to create directory");
+				Log.e(TAG, "failed to create directory: " + mAppStorageDir);
 			}
 		}
 	}
@@ -127,7 +144,7 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 	private Camera getCameraInstance() {
 		Camera camera = null;
 		try {
-			camera = Camera.open();
+			camera = Camera.open(0);
 		} catch (Exception e) {
 			// cannot get camera or does not exist
 		}
@@ -291,13 +308,17 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 			break;
 		}
 
-		int displayOrientation;
-
+		int displayOrientation;		
+		
 		if (cameraInfo.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
 			displayOrientation = (cameraInfo.orientation + degrees) % 360;
 			displayOrientation = (360 - displayOrientation) % 360;
-		} else {
+			Log.e("displayOrientation: ", Integer.toString(displayOrientation));
+			Log.e(": ", Integer.toString(displayOrientation));
+		} 
+		else {
 			displayOrientation = (cameraInfo.orientation - degrees + 360) % 360;
+			Log.e("displayOrientationmerp: ", Integer.toString(displayOrientation));
 		}
 		mCamera.setDisplayOrientation(displayOrientation);
 	}
