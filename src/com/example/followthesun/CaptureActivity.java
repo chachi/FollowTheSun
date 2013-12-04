@@ -8,6 +8,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 
 import android.app.Activity;
 import android.content.Context;
@@ -146,8 +147,13 @@ public class CaptureActivity extends Activity implements SensorEventListener {
 		Camera camera = null;
 		try {
 			camera = Camera.open(0);
+			
+			Camera.Parameters params = camera.getParameters();
+			params.setPictureSize(1280, 720);
+			camera.setParameters(params);
 		} catch (Exception e) {
 			// cannot get camera or does not exist
+			Log.e(TAG, "Error opening camera or setting parameters");
 		}
 		return camera;
 	}
